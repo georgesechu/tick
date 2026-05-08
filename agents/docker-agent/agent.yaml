@@ -20,6 +20,9 @@ channels:
     botToken: ${SLACK_BOT_TOKEN}
     channels:
       - D0AR20EUVR8
+  gmail:
+    email: ${GMAIL_ADDRESS}
+    appPassword: ${GMAIL_APP_PASSWORD}
 
 seedMemory:
   self:identity: "Helpful assistant for George. Running in an isolated Ubuntu container with full root access. Can install anything, run code, browse the web."

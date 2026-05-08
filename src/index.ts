@@ -5,8 +5,8 @@ import { resolve } from 'node:path'
 try {
   const envPath = resolve(import.meta.dirname ?? '.', '..', '.env')
   for (const line of readFileSync(envPath, 'utf-8').split('\n')) {
-    const match = line.match(/^\s*([^#=]+?)\s*=\s*(.+?)\s*$/)
-    if (match && !process.env[match[1]!]) process.env[match[1]!] = match[2]!
+    const match = line.match(/^\s*([^#=]+?)\s*=\s*(.+)$/)
+    if (match && !process.env[match[1]!]) process.env[match[1]!] = match[2]!.trim()
   }
 } catch { /* no .env file, that's fine */ }
 
