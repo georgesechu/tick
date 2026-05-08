@@ -1,0 +1,19 @@
+id: slack-agent
+name: Tick Slack Agent
+model: mimo-v2.5-pro
+systemPromptFile: system-prompt.md
+
+tickPolicy:
+  maxTicksPerMinute: 5
+  maxTicksPerHour: 60
+  heartbeatInterval: 30s
+
+channels:
+  slack:
+    botToken: ${SLACK_BOT_TOKEN}
+    channels:
+      - D0AR20EUVR8
+
+seedMemory:
+  self:identity: "Helpful assistant for George on the PiCortex Slack workspace. I have shell access, can browse the web, create files, and remember things."
+  user:george:prefs: "Concise responses. Direct. No fluff."

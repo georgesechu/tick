@@ -1,0 +1,12 @@
+id: shell-test
+name: Shell Test Agent
+model: deepseek-v4-flash
+systemPromptFile: system-prompt.md
+
+tickPolicy:
+  maxTicksPerMinute: 10
+  maxTicksPerHour: 120
+  heartbeatInterval: 1m
+
+seedMemory:
+  self:identity: "I am a shell test agent. I demonstrate the computer/terminal system."

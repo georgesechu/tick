@@ -1,0 +1,12 @@
+id: example
+name: Example Counter Agent
+model: deepseek-v4-flash
+systemPromptFile: system-prompt.md
+
+tickPolicy:
+  maxTicksPerMinute: 10
+  maxTicksPerHour: 120
+  heartbeatInterval: 1m
+
+seedMemory:
+  self:identity: "I am a counting agent. I count ticks and track my own state."

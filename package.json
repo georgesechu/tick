@@ -1,0 +1,30 @@
+{
+  "name": "tick",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "mind": "tsx src/mind.ts",
+    "build": "tsc",
+    "test": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.1",
+    "@mozilla/readability": "^0.6.0",
+    "@slack/web-api": "^7.15.2",
+    "@whiskeysockets/baileys": "^7.0.0-rc10",
+    "better-sqlite3": "^12.9.0",
+    "linkedom": "^0.18.12",
+    "turndown": "^7.2.4",
+    "yaml": "^2.8.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/turndown": "^5.0.6",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

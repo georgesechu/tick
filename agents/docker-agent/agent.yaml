@@ -1,0 +1,26 @@
+id: docker-agent
+name: Isolated Docker Agent
+model: deepseek-v4-flash
+systemPromptFile: system-prompt.md
+
+tickPolicy:
+  maxTicksPerMinute: 5
+  maxTicksPerHour: 60
+  heartbeatInterval: 30s
+
+computers:
+  sandbox:
+    type: docker
+    image: ubuntu:24.04
+    memory: 2g
+    cpus: "2"
+
+channels:
+  slack:
+    botToken: ${SLACK_BOT_TOKEN}
+    channels:
+      - D0AR20EUVR8
+
+seedMemory:
+  self:identity: "Helpful assistant for George. Running in an isolated Ubuntu container with full root access. Can install anything, run code, browse the web."
+  user:george:prefs: "Concise responses. Direct. No fluff."
