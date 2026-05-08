@@ -22,6 +22,7 @@ import { SQLiteInboxStore } from './providers/inbox/sqlite.js'
 import { SQLiteOutboxStore } from './providers/outbox/sqlite.js'
 import { SlackChannelAdapter } from './providers/channels/slack.js'
 import { WhatsAppChannelAdapter } from './providers/channels/whatsapp.js'
+import { GmailChannelAdapter } from './providers/channels/gmail.js'
 import { LocalComputer } from './providers/computers/local.js'
 import { DockerComputer } from './providers/computers/docker.js'
 import { DefaultComputerManager } from './providers/computers/manager.js'
@@ -245,6 +246,21 @@ async function createChannelAdapters(
       authDir: agentDir ?? '.whatsapp-auth',
       chats: (cfg.chats ?? []) as string[],
     }, logger))
+  }
+
+  if (channels.gmail) {
+    const cfg = channels.gmail as Record<string, unknown>
+    const email = resolveEnvVar(cfg.email as string) ?? process.env.GMAIL_ADDRESS
+    const appPassword = resolveEnvVar(cfg.appPassword as string) ?? process.env.GMAIL_APP_PASSWORD
+    if (email && appPassword) {
+      adapters.push(new GmailChannelAdapter({
+        email,
+        appPassword,
+        labels: (cfg.labels ?? ['INBOX']) as string[],
+      }, logger))
+    } else {
+      logger.warn('gmail configured but missing GMAIL_ADDRESS or GMAIL_APP_PASSWORD')
+    }
   }
 
   return adapters
