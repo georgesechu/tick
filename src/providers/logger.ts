@@ -147,14 +147,13 @@ export class ConsoleLogger implements Logger {
       this.flushStartupBanner()
     }
 
-    console.log(this.formatDaemonLine(level, msg, data))
+    this.writeln(this.formatDaemonLine(level, msg, data))
   }
 
   private flushStartupBanner(): void {
     if (this.startupFlushed) return
     this.startupFlushed = true
 
-    // Collapse startup into a compact banner
     const channels: string[] = []
     const computers: string[] = []
     let model = ''
@@ -173,13 +172,13 @@ export class ConsoleLogger implements Logger {
     }
 
     const bar = '═'.repeat(50)
-    console.log(`${bar}`)
-    console.log(`  🤖 ${BOLD}${this.agentName}${RESET} is online`)
-    if (model) console.log(`  🧠 ${DIM}${model}${RESET}`)
-    if (channels.length) console.log(`  💬 ${channels.join(' · ')}`)
-    if (computers.length) console.log(`  🖥️  ${computers.join(' · ')}`)
-    if (seedCount) console.log(`  🌱 ${seedCount} memories seeded`)
-    console.log(`${bar}`)
+    this.writeln(`${bar}`)
+    this.writeln(`  🤖 ${BOLD}${this.agentName}${RESET} is online`)
+    if (model) this.writeln(`  🧠 ${DIM}${model}${RESET}`)
+    if (channels.length) this.writeln(`  💬 ${channels.join(' · ')}`)
+    if (computers.length) this.writeln(`  🖥️  ${computers.join(' · ')}`)
+    if (seedCount) this.writeln(`  🌱 ${seedCount} memories seeded`)
+    this.writeln(`${bar}`)
   }
 
   private formatDaemonLine(level: string, msg: string, data?: Record<string, unknown>): string {
@@ -294,7 +293,12 @@ export class ConsoleLogger implements Logger {
       line += ' ' + formatData(data)
     }
 
-    console.log(line)
+    this.writeln(line)
+  }
+
+  /** Write a line, flushing immediately (journalctl needs this) */
+  private writeln(line: string): void {
+    process.stdout.write(line + '\n')
   }
 
   // ── Shared ──
