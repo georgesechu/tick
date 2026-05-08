@@ -8,42 +8,77 @@ const YELLOW = '\x1b[33m'
 const RED = '\x1b[31m'
 const GREEN = '\x1b[32m'
 const MAGENTA = '\x1b[35m'
+const BLUE = '\x1b[34m'
 const GRAY = '\x1b[90m'
+const WHITE = '\x1b[97m'
 
-const LEVEL_STYLE: Record<string, { icon: string; color: string }> = {
-  DEBUG: { icon: '🔍', color: GRAY },
-  INFO:  { icon: '  ', color: '' },
-  WARN:  { icon: '⚠️ ', color: YELLOW },
-  ERROR: { icon: '❌', color: RED },
+// Compact icon mapping — covers all log messages from the system
+const ICONS: Record<string, string> = {
+  // Startup
+  'loading agent':      '📦',
+  'llm provider':       '🤖',
+  'computer':           '🖥️ ',
+  'seeded memory':      '🌱',
+  'starting continuous': '🚀',
+
+  // Channels
+  'slack connected':    '💬',
+  'slack:':             '💬',
+  'whatsapp connected': '💬',
+  'whatsapp:':          '💬',
+  'gmail imap':         '📧',
+  'gmail smtp':         '📧',
+  'gmail:':             '📧',
+
+  // Tick lifecycle
+  'tick #':             '⚡',
+  'tick complete':      '✅',
+  'tick error':         '💥',
+  'tick failed':        '💥',
+
+  // LLM
+  'llm responded':      '🧠',
+  'thinking':           '💭',
+
+  // Actions
+  'shell':              '💻',
+  'send enqueued':      '📤',
+  'browse ok':          '🌐',
+  'browse failed':      '🌐',
+  'downloaded':         '📥',
+  'download failed':    '📥',
+  'timer set':          '⏰',
+  'copied from':        '📋',
+
+  // Status
+  'sleeping':           '😴',
+  'shutting down':      '🛑',
+  'stopped':            '🏁',
 }
 
-const MSG_ICONS: Record<string, string> = {
-  'loading agent':     '📦',
-  'llm provider':      '🤖',
-  'computer':          '🖥️ ',
-  'seeded memory':     '🌱',
-  'tick #':            '⚡',
-  'llm responded':     '🧠',
-  'thinking':          '💭',
-  'shell':             '💻',
-  'send enqueued':     '📤',
-  'slack connected':   '🔗',
-  'slack:':            '💬',
-  'tick complete':     '✅',
-  'tick error':        '💥',
-  'tick failed':       '💥',
-  'starting':          '🚀',
-  'shutting down':     '🛑',
-  'stopped':           '🏁',
-}
+// Messages to suppress entirely in daemon mode (noise)
+const DAEMON_SUPPRESS = new Set([
+  'sleeping',
+])
+
+// Messages to collapse into the startup banner
+const STARTUP_KEYS = new Set([
+  'loading agent', 'llm provider', 'computer', 'seeded memory',
+  'slack connected', 'whatsapp connected', 'gmail imap', 'gmail smtp',
+  'starting continuous',
+])
 
 export class ConsoleLogger implements Logger {
   private daemon: boolean
   private spinnerInterval: ReturnType<typeof setInterval> | null = null
   private spinnerStart = 0
+  private startupBuffer: string[] = []
+  private startupFlushed = false
+  private agentName: string
 
   constructor(private prefix: string = 'tick', daemon = false) {
     this.daemon = daemon
+    this.agentName = prefix
   }
 
   startSpinner(msg: string): void {
@@ -86,23 +121,172 @@ export class ConsoleLogger implements Logger {
 
   private log(level: string, msg: string, data?: Record<string, unknown>): void {
     if (this.daemon) {
-      this.logPlain(level, msg, data)
+      this.logDaemon(level, msg, data)
     } else {
       this.logPretty(level, msg, data)
     }
   }
 
-  private logPlain(level: string, msg: string, data?: Record<string, unknown>): void {
-    const ts = new Date().toISOString()
-    const line = `${ts} [${this.prefix}] ${level} ${msg}`
-    console.log(data ? `${line} ${JSON.stringify(data)}` : line)
+  // ── Daemon mode: compact, emoji-rich, journalctl-friendly ──
+
+  private logDaemon(level: string, msg: string, data?: Record<string, unknown>): void {
+    const lower = msg.toLowerCase()
+
+    // Suppress noise
+    if (DAEMON_SUPPRESS.has(lower)) return
+
+    // Collect startup messages into a banner
+    if (!this.startupFlushed) {
+      for (const key of STARTUP_KEYS) {
+        if (lower.startsWith(key)) {
+          this.startupBuffer.push(this.formatDaemonLine(level, msg, data))
+          return
+        }
+      }
+      // First non-startup message — flush banner
+      this.flushStartupBanner()
+    }
+
+    console.log(this.formatDaemonLine(level, msg, data))
   }
 
-  private logPretty(level: string, msg: string, data?: Record<string, unknown>): void {
-    const style = LEVEL_STYLE[level] ?? LEVEL_STYLE.INFO!
+  private flushStartupBanner(): void {
+    if (this.startupFlushed) return
+    this.startupFlushed = true
+
+    // Collapse startup into a compact banner
+    const channels: string[] = []
+    const computers: string[] = []
+    let model = ''
+    let seedCount = 0
+
+    for (const line of this.startupBuffer) {
+      if (line.includes('slack')) channels.push('slack')
+      if (line.includes('whatsapp')) channels.push('whatsapp')
+      if (line.includes('gmail') && line.includes('IMAP')) channels.push('gmail')
+      if (line.includes('computer')) computers.push('docker')
+      if (line.includes('llm provider')) {
+        const m = line.match(/baseUrl=(\S+)/)
+        model = m ? m[1]! : ''
+      }
+      if (line.includes('🌱')) seedCount++
+    }
+
+    const bar = '═'.repeat(50)
+    console.log(`${bar}`)
+    console.log(`  🤖 ${BOLD}${this.agentName}${RESET} is online`)
+    if (model) console.log(`  🧠 ${DIM}${model}${RESET}`)
+    if (channels.length) console.log(`  💬 ${channels.join(' · ')}`)
+    if (computers.length) console.log(`  🖥️  ${computers.join(' · ')}`)
+    if (seedCount) console.log(`  🌱 ${seedCount} memories seeded`)
+    console.log(`${bar}`)
+  }
+
+  private formatDaemonLine(level: string, msg: string, data?: Record<string, unknown>): string {
+    const icon = this.getIcon(msg)
     const time = formatTime(new Date())
-    const icon = this.getIcon(msg, style.icon)
-    const color = style.color
+
+    // Level prefix for warnings/errors
+    const lvl = level === 'WARN' ? `${YELLOW}⚠${RESET} ` : level === 'ERROR' ? `${RED}✗${RESET} ` : ''
+
+    // Format the message compactly
+    let line = `${DIM}${time}${RESET} ${icon} ${lvl}${this.formatMessage(msg, data)}`
+
+    return line
+  }
+
+  private formatMessage(msg: string, data?: Record<string, unknown>): string {
+    const lower = msg.toLowerCase()
+
+    // Special compact formats for common messages
+    if (lower.startsWith('tick #') && lower.includes('starting')) {
+      const n = data?.agent ? '' : ''
+      return `${DIM}tick ${msg.match(/#\d+/)?.[0] ?? ''}${RESET}`
+    }
+
+    if (lower === 'tick complete' || lower.startsWith('tick #') && lower.includes('complete')) {
+      const status = data?.status ?? ''
+      const ms = data?.durationMs ?? ''
+      const statusStr = status === 'idle' ? `${GREEN}idle${RESET}` :
+                        status === 'working' ? `${YELLOW}working${RESET}` :
+                        status === 'done' ? `${CYAN}done${RESET}` :
+                        status === 'blocked' ? `${RED}blocked${RESET}` : String(status)
+      return `${statusStr} ${DIM}${ms}ms${RESET}`
+    }
+
+    if (lower === 'llm responded') {
+      const s = data?.status ?? ''
+      const a = data?.actions ?? 0
+      const m = data?.memoryOps ?? 0
+      const tok = data?.tokens as any
+      const statusStr = s === 'idle' ? `${GREEN}idle${RESET}` :
+                        s === 'working' ? `${YELLOW}working${RESET}` :
+                        s === 'done' ? `${CYAN}done${RESET}` : String(s)
+      const parts = [statusStr]
+      if (a) parts.push(`${a} actions`)
+      if (m) parts.push(`${m} mem`)
+      if (tok) parts.push(`${DIM}${tok.in}→${tok.out} tok${RESET}`)
+      return parts.join('  ')
+    }
+
+    if (lower.startsWith('thinking')) {
+      const thought = data?.thinking as string ?? ''
+      return `${DIM}${thought.slice(0, 80)}${thought.length > 80 ? '…' : ''}${RESET}`
+    }
+
+    if (lower.includes('shell [')) {
+      const cmd = (data?.command as string ?? '').slice(0, 50)
+      const exit = msg.match(/exit:(\d+)/)?.[1] ?? '?'
+      const ok = exit === '0' ? `${GREEN}✓${RESET}` : `${RED}✗${exit}${RESET}`
+      return `${ok} ${DIM}${cmd}${cmd.length > 50 ? '…' : ''}${RESET}`
+    }
+
+    if (lower === 'send enqueued') {
+      const ch = data?.channel ?? ''
+      const to = data?.to ?? ''
+      const files = data?.files as number ?? 0
+      return `→ ${ch}${files ? ` 📎${files}` : ''} ${DIM}${to}${RESET}`
+    }
+
+    if (lower.includes('sent to')) {
+      return `${GREEN}✓${RESET} ${DIM}delivered${RESET}`
+    }
+
+    if (lower.includes('new messages')) {
+      return `${WHITE}${msg}${RESET}`
+    }
+
+    if (lower.includes('browse ok')) {
+      return `${GREEN}✓${RESET} ${data?.url ?? ''} ${DIM}(${data?.chars} chars)${RESET}`
+    }
+
+    if (lower.includes('timer set')) {
+      return `${CYAN}${msg}${RESET} ${DIM}${data?.fireAt ?? ''}${RESET}`
+    }
+
+    if (lower.includes('tick failed') || lower.includes('tick error')) {
+      const err = (data?.error as string ?? '').slice(0, 60)
+      return `${RED}${err}${err.length > 60 ? '…' : ''}${RESET}`
+    }
+
+    // Default: show message + compact data
+    if (data && Object.keys(data).length > 0) {
+      const parts = Object.entries(data)
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+        .join(' ')
+      return `${msg} ${DIM}${parts.slice(0, 60)}${RESET}`
+    }
+
+    return msg
+  }
+
+  // ── Interactive mode: full detail with spinners ──
+
+  private logPretty(level: string, msg: string, data?: Record<string, unknown>): void {
+    const icon = this.getIcon(msg)
+    const time = formatTime(new Date())
+    const color = level === 'WARN' ? YELLOW : level === 'ERROR' ? RED : ''
 
     let line = `${DIM}${time}${RESET} ${icon} ${color}${msg}${RESET}`
 
@@ -113,12 +297,14 @@ export class ConsoleLogger implements Logger {
     console.log(line)
   }
 
-  private getIcon(msg: string, fallback: string): string {
+  // ── Shared ──
+
+  private getIcon(msg: string): string {
     const lower = msg.toLowerCase()
-    for (const [pattern, icon] of Object.entries(MSG_ICONS)) {
-      if (lower.startsWith(pattern.toLowerCase())) return icon
+    for (const [pattern, icon] of Object.entries(ICONS)) {
+      if (lower.startsWith(pattern)) return icon
     }
-    return fallback
+    return '  '
   }
 }
 
