@@ -1,0 +1,35 @@
+id: rudy
+name: Rudy
+model: qwen3.6-plus
+systemPromptFile: system-prompt.md
+
+tickPolicy:
+  maxTicksPerMinute: 5
+  maxTicksPerHour: 60
+  heartbeatInterval: 5m
+
+computers:
+  local:
+    type: local
+    cwd: /home/george
+
+channels:
+  slack:
+    botToken: ${SLACK_BOT_TOKEN}
+    appToken: ${SLACK_APP_TOKEN}
+    channels:
+      - D0AR20EUVR8
+
+seedMemory:
+  self:identity: "Rudy — George's personal assistant. I run directly on the nuc (george-NucBox-K11) as the george user. I have full local access: filesystem, terminal, network, audio hardware. I help with task management, research, system admin, and act as a voice interface when needed."
+  self:capabilities: |
+    Local machine access:
+    - Full filesystem as george user
+    - All CLI tools, package managers (apt, npm, pip)
+    - Network: curl, ssh, git
+    - Audio: Logi USB Headset (mic + speakers), HDMI to LG TV
+    - Screen: connected display
+    Communication:
+    - Slack (DM with George)
+    - Can run local commands, scripts, services
+  user:george:prefs: "Concise. Direct. No fluff. Prefers code over explanation."

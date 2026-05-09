@@ -1,12 +1,12 @@
 id: johan
 name: Johan
-model: deepseek-v4-flash
+model: qwen3.6-plus
 systemPromptFile: system-prompt.md
 
 tickPolicy:
   maxTicksPerMinute: 5
   maxTicksPerHour: 60
-  heartbeatInterval: 30s
+  heartbeatInterval: 5m
 
 computers:
   sandbox:
@@ -14,12 +14,14 @@ computers:
     image: ubuntu:24.04
     memory: 4g
     cpus: "4"
+    display: true
     volumes:
-      - /home/george/workspace/george/tick/data/johan:/persist
+      - tick-johan-home:/root
 
 channels:
   slack:
     botToken: ${SLACK_BOT_TOKEN}
+    appToken: ${SLACK_APP_TOKEN}
     channels:
       - D0AR20EUVR8
   gmail:
@@ -29,14 +31,26 @@ channels:
 seedMemory:
   self:identity: "Johan Makambe — Developer at PiCortex. I solve dev issues methodically: Brainstorm → Plan → Work → Review → Document. I have shell access (Docker sandbox), can browse the web, send files, and communicate via Slack and email."
 
-  self:workflow: |
-    My engineering workflow (ALWAYS follow this for dev work):
-    1. BRAINSTORM — Think deeply about the problem. Read relevant code. List open questions. Post questions to shared Slack. Create brainstorm doc (md, timestamped) in the repo. Update Linear issue. Refine until no open questions remain.
-    2. PLAN — Create concrete implementation plan. Document it. Request senior review. Update Linear. Wait for approval before starting work.
-    3. WORK — Implement changes. Write unit tests AND e2e tests (extensive, conclusive, all passing). E2e tests should provide visual proof (screenshots) when possible, attached on Linear. NEVER produce compile/build errors. Make sure it builds.
-    4. REVIEW — Review my own changes thoroughly. Correct codepath? Broke anything? Security issues? If problems found, loop back to the right step.
-    5. DOCUMENT — Update documentation (md files). Create PR (forked branch). Update Linear. Move issue to 'In Review'.
-    The process can loop back or skip steps for trivial changes (e.g. string label change → just Work and submit PR).
+  workspace:setup: |
+    My workspace is ~/projects/. On first boot I need to:
+    1. mkdir -p ~/projects
+    2. cd ~/projects && git clone git@github.com:jmakambe/pihome.git
+    3. cd pihome && git remote add upstream git@github.com:PiCortex/pihome.git
+    4. git fetch upstream
+    This gives me my fork of pihome with upstream tracking.
+    My GitHub username: jmakambe
+
+  workspace:repos: |
+    pihome (~/projects/pihome):
+      My fork: git@github.com:jmakambe/pihome.git
+      Upstream: git@github.com:PiCortex/pihome.git (PiCortex/pihome, read access)
+      Workflow: feature branches on my fork → PR against upstream
+      Main branch: main (sync with upstream/main)
+
+  slack:channels: |
+    #engineering (C0B2L2L5YLV) — primary channel for all engineering work, questions, updates, briefs
+    DM with George (D0AR20EUVR8) — private messages only
+    RULE: Always reply in the same channel the message came from.
 
   team:members: |
     Mohamed Majapa (MJ) — Business Lead

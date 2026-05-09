@@ -53,7 +53,51 @@ export interface WaitAction {
   onEvent?: string
 }
 
-export type Action = ShellAction | SendAction | DownloadAction | BrowseAction | WaitAction
+export interface GrepAction {
+  type: 'grep'
+  pattern: string              // regex pattern (ripgrep syntax)
+  path?: string                // directory or file to search (default: project root)
+  include?: string             // file glob filter, e.g. "*.ts" or "*.{js,jsx}"
+  context?: number             // lines of context around matches (default: 0)
+  maxResults?: number          // cap results (default: 50)
+  computer?: string
+}
+
+export interface GlobAction {
+  type: 'glob'
+  pattern: string              // glob pattern, e.g. "**/*.ts" or "src/**/test_*"
+  path?: string                // base directory (default: project root)
+  fileType?: 'file' | 'directory' | 'any'  // filter by type (default: file)
+  maxResults?: number          // cap results (default: 100)
+  computer?: string
+}
+
+export type Action = ShellAction | SendAction | DownloadAction | BrowseAction | WaitAction | GrepAction | GlobAction
+
+// --- File Search Results ---
+
+export interface GrepMatch {
+  file: string
+  line: number
+  text: string                 // the matching line
+  context?: string[]           // surrounding context lines
+}
+
+export interface GrepResult {
+  pattern: string
+  matches: GrepMatch[]
+  totalMatches: number         // may exceed matches.length if capped
+  truncated: boolean
+  error: string | null
+}
+
+export interface GlobResult {
+  pattern: string
+  files: string[]
+  totalFiles: number
+  truncated: boolean
+  error: string | null
+}
 
 // --- Browse Results ---
 

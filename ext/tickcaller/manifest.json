@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "TickCaller",
+  "short_name": "TickCaller",
+  "version": "0.1.0",
+  "description": "One-button call to your tick agent — captures tab + mic audio, streams transcripts.",
+  "permissions": ["tabCapture", "offscreen", "storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TickCaller",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

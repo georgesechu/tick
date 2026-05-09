@@ -49,6 +49,9 @@ export class SQLiteOutboxStore implements OutboxStore {
       fetchPending: this.db.prepare(`
         SELECT * FROM outbox WHERE status = 'pending' ORDER BY created_at ASC
       `),
+      fetchRecent: this.db.prepare<[number]>(`
+        SELECT * FROM outbox ORDER BY created_at DESC LIMIT ?
+      `),
       markSent: this.db.prepare<[string, string]>(`
         UPDATE outbox SET status = 'sent', sent_at = ? WHERE id = ?
       `),
@@ -75,6 +78,11 @@ export class SQLiteOutboxStore implements OutboxStore {
 
   async fetchPending(): Promise<OutboxItem[]> {
     const rows = this.stmts.fetchPending.all() as Row[]
+    return rows.map(rowToItem)
+  }
+
+  async fetchRecent(limit: number): Promise<OutboxItem[]> {
+    const rows = this.stmts.fetchRecent.all(limit) as Row[]
     return rows.map(rowToItem)
   }
 

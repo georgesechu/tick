@@ -126,6 +126,81 @@ npx vitest run     # 51 tests
 npx vitest         # watch mode
 ```
 
+## TickCaller (Live Call Integration)
+
+Chrome extension that captures tab audio + microphone during calls (Google Meet, Zoom, etc.) and streams 60-second transcription chunks to the agent. The agent sees an active call in its prompt and can contribute via Slack.
+
+### Architecture
+
+```
+Chrome Extension (ext/tickcaller/)
+  ├── popup.js     — one-button UI: "Call Johan" / "End Call"
+  ├── background.js — service worker, tabCapture lifecycle
+  ├── offscreen.js  — holds MediaStream + MediaRecorder, cycles every 60s
+  └── options.js    — server URL + token config
+         │
+         │ HTTP POST (tab+mic audio chunks)
+         ▼
+Tick Call Server (:7070)
+  ├── POST /call/start  → creates CallSession in SQLite
+  ├── POST /call/chunk  → saves webm, transcribes via Whisper API
+  ├── POST /call/stop   → finalizes session
+  └── GET  /call/status → debug endpoint
+         │
+         │ signals eventSignal (wakes tick loop)
+         ▼
+Context Assembler
+  └── ═══ ACTIVE CALL ═══
+        George is on a live call — 12m 34s
+        Tab: "Team Standup" (meet.google.com/abc-def)
+        LATEST TRANSCRIPT (last ~60s): ...
+      ═══════════════════════════════════════
+```
+
+### Setup
+
+```bash
+# .env — required
+TICKCALLER_TOKEN=some-shared-secret     # auth token (shared with extension)
+WHISPER_API_KEY=sk-...                  # OpenAI or Groq API key
+WHISPER_BACKEND=openai                  # "openai" (default) or "groq"
+
+# .env — optional
+TICKCALLER_PORT=7070                    # default: 7070
+```
+
+1. Load `ext/tickcaller/` as unpacked extension in `chrome://extensions`
+2. Open extension options → set Server URL to `http://localhost:7070` and Token to your `TICKCALLER_TOKEN`
+3. Grant microphone access in the options page
+4. Navigate to a call tab (Google Meet, etc.), click the extension → "Call Johan"
+
+### Extension Files
+
+| File | Role |
+|------|------|
+| `manifest.json` | MV3. Permissions: `tabCapture`, `offscreen`, `storage`, `activeTab` |
+| `background.js` | Service worker. Gets `tabCapture.getMediaStreamId()`, manages offscreen document |
+| `offscreen.js` | Holds MediaStream + MediaRecorder. Cycles recorders every 60s. Tab+mic mix via AudioContext |
+| `popup.html/js/css` | One-button UI. Captures tab title/URL in popup context (activeTab scope) |
+| `options.html/js` | Server URL + token + mic permission |
+
+### Backend Files
+
+| File | Role |
+|------|------|
+| `src/providers/call/types.ts` | `CallSession`, `CallSegment`, `ActiveCallContext`, `CallStore` interface |
+| `src/providers/call/store.ts` | `SQLiteCallStore` — calls + segments tables, FTS5 transcript search |
+| `src/providers/call/transcribe.ts` | Whisper API (OpenAI or Groq) — single fetch per chunk |
+| `src/providers/call/server.ts` | HTTP server with multipart parser (no deps), token auth, CORS |
+
+### Key Design Decisions
+
+- **60s chunks** (vs agent-bridge's 2.5s) — agent ticks every 30s, so 60s chunks give fresh transcript every 1-2 ticks without hammering the API
+- **Recorder cycling** (not timeslice) — `MediaRecorder.start(timeslice)` emits chunks without webm headers; cycling produces self-contained files any decoder handles
+- **Tab audio un-muting** — `tabCapture` mutes the tab; we route through `AudioContext.destination` so the user still hears the meeting
+- **Mic permission warming** — Chrome's permission prompt from offscreen docs auto-dismisses; we warm in the popup and fallback in options
+- **Fire-and-forget stop** — background.js doesn't await offscreen stop response (popup can close mid-wait)
+
 ## Project Structure
 
 ```
@@ -138,9 +213,16 @@ src/
     memory/                # SQLite with versioning + FTS
     computers/             # Local, Docker
     channels/              # Slack, WhatsApp
+    call/                  # TickCaller: live call transcription
+      types.ts             # CallSession, CallSegment, CallStore
+      store.ts             # SQLite store (calls + segments + FTS)
+      transcribe.ts        # Whisper API (OpenAI/Groq)
+      server.ts            # HTTP server for extension
     browser.ts             # Readability-based web browser
   orchestrator/            # Core tick loop + context assembly
   mind.ts                  # Live TUI dashboard
+ext/
+  tickcaller/              # Chrome extension for live call capture
 agents/                    # Agent definitions
 test/                      # Vitest test suite
 ```

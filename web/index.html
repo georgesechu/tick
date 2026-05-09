@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tick dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Top status bar -->
+  <header id="header">
+    <div class="header-left">
+      <span class="logo">tick</span>
+      <span id="agent-name" class="agent-name"></span>
+      <span id="agent-model" class="agent-model"></span>
+    </div>
+    <div class="header-center">
+      <div id="status-badge" class="status-badge idle">
+        <span class="status-dot"></span>
+        <span id="status-text">connecting...</span>
+      </div>
+      <span id="tick-info" class="tick-info"></span>
+    </div>
+    <div class="header-right">
+      <div class="stat-pills">
+        <span class="pill" id="pill-inbox" title="Inbox">
+          <span class="pill-icon">&#9993;</span>
+          <span class="pill-val" id="stat-inbox">0</span>
+        </span>
+        <span class="pill" id="pill-outbox" title="Outbox">
+          <span class="pill-icon">&#9993;</span>
+          <span class="pill-val" id="stat-outbox">0</span>
+        </span>
+        <span class="pill" id="pill-memory" title="Memory keys">
+          <span class="pill-icon">&#128065;</span>
+          <span class="pill-val" id="stat-memory">0</span>
+        </span>
+        <span class="pill" id="pill-tokens" title="Total tokens">
+          <span class="pill-icon">&#9889;</span>
+          <span class="pill-val" id="stat-tokens">0</span>
+        </span>
+        <span class="pill" id="pill-cost" title="Estimated cost">
+          <span class="pill-icon">$</span>
+          <span class="pill-val" id="stat-cost">0.00</span>
+        </span>
+      </div>
+      <button id="theme-toggle" class="theme-btn" title="Toggle theme"></button>
+    </div>
+  </header>
+
+  <!-- Navigation tabs -->
+  <nav id="nav">
+    <button class="tab active" data-view="overview"><span class="tab-icon">&#9881;</span> Overview</button>
+    <button class="tab" data-view="memory"><span class="tab-icon">&#128065;</span> Memory</button>
+    <button class="tab" data-view="activity"><span class="tab-icon">&#9889;</span> Activity</button>
+    <button class="tab" data-view="logs"><span class="tab-icon">&#128220;</span> Logs</button>
+    <button class="tab" data-view="prompt"><span class="tab-icon">&#128196;</span> Prompt</button>
+    <button class="tab" data-view="inbox"><span class="tab-icon">&#128233;</span> Inbox</button>
+    <button class="tab" data-view="usage"><span class="tab-icon">&#128200;</span> Usage</button>
+  </nav>
+
+  <!-- Main content area -->
+  <main id="main">
+    <!-- Overview -->
+    <section id="view-overview" class="view active">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">Scratchpad</div>
+          <pre id="scratchpad" class="card-body mono"></pre>
+        </div>
+        <div class="card">
+          <div class="card-header">Timers</div>
+          <div id="timers" class="card-body"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Recent Ticks</div>
+        <div id="tick-chart" class="tick-chart"></div>
+      </div>
+      <div class="card" id="call-card" style="display:none">
+        <div class="card-header">Active Call</div>
+        <div id="call-info" class="card-body"></div>
+      </div>
+    </section>
+
+    <!-- Memory -->
+    <section id="view-memory" class="view">
+      <div class="toolbar">
+        <input type="text" id="memory-search" placeholder="Filter keys..." class="search-input">
+        <div class="filter-pills" id="memory-filters"></div>
+      </div>
+      <div id="memory-list" class="memory-list"></div>
+    </section>
+
+    <!-- Activity -->
+    <section id="view-activity" class="view">
+      <div id="activity-list" class="activity-list"></div>
+    </section>
+
+    <!-- Logs (system logs) -->
+    <section id="view-logs" class="view">
+      <div class="terminal">
+        <div class="terminal-header">
+          <span>System Logs</span>
+          <div>
+            <button id="log-clear" class="btn-sm">Clear</button>
+            <button id="log-scroll" class="btn-sm active">Auto-scroll</button>
+          </div>
+        </div>
+        <div id="log-output" class="terminal-output"></div>
+      </div>
+    </section>
+
+    <!-- Prompt -->
+    <section id="view-prompt" class="view">
+      <div id="prompt-content" class="prompt-content"></div>
+    </section>
+
+    <!-- Inbox/Outbox -->
+    <section id="view-inbox" class="view">
+      <div class="inbox-tabs">
+        <button class="inbox-tab active" data-sub="in">Inbox</button>
+        <button class="inbox-tab" data-sub="out">Outbox</button>
+      </div>
+      <div class="filter-pills" id="inbox-channel-filter" style="margin-bottom:10px"></div>
+      <div id="inbox-list" class="inbox-list"></div>
+      <div id="outbox-list" class="inbox-list" style="display:none"></div>
+    </section>
+
+    <!-- Usage -->
+    <section id="view-usage" class="view">
+      <div id="usage-content"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

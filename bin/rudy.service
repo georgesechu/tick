@@ -1,0 +1,19 @@
+[Unit]
+Description=Rudy - George's Personal Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=george
+WorkingDirectory=/home/george/workspace/george/tick
+Environment=FORCE_COLOR=1
+ExecStart=/usr/bin/npx --yes tsx src/index.ts run --agent agents/rudy --daemon
+Restart=always
+RestartSec=10
+EnvironmentFile=/home/george/workspace/george/tick/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rudy
+
+[Install]
+WantedBy=multi-user.target

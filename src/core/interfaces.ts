@@ -11,11 +11,14 @@ import type {
   InboxItem, OutboxItem,
   ShellAction, ExecResult, ShellResult, BackgroundProcess,
   BrowseAction, BrowseResult, DownloadResult,
+  GrepResult, GlobResult,
   ComputerStatus, TerminalInfo,
   TickRecord,
   TimeContext, TriggerReason, WaitAction,
   LLMMessage,
 } from './types.js'
+import type { ActionHistoryEntry } from '../orchestrator/orchestrator.js'
+import type { ActiveCallContext } from '../providers/call/types.js'
 
 // --- LLM ---
 
@@ -80,6 +83,7 @@ export interface InboxStore {
 export interface OutboxStore {
   enqueue(item: Pick<OutboxItem, 'channel' | 'to' | 'content' | 'attachments' | 'replyTo' | 'threadId'>): Promise<string>
   fetchPending(): Promise<OutboxItem[]>
+  fetchRecent(limit: number): Promise<OutboxItem[]>
   markSent(id: string): Promise<void>
   markFailed(id: string, error: string): Promise<void>
 }
@@ -154,9 +158,35 @@ export interface ChannelAdapter {
   readonly name: string
   send(item: OutboxItem): Promise<void>
   downloadAttachment?(ref: string, targetPath: string): Promise<void>
+
+  /** Pull mode: orchestrator polls on each cycle */
   poll?(): Promise<InboxItem[]>
+
+  /** Push mode: adapter calls handler when events arrive in real-time.
+   *  The handler pushes items to inbox and signals the tick loop.
+   *  Adapters can support poll, listen, or both. */
+  listen?(handler: RealtimeHandler): Promise<void>
+
   start?(): Promise<void>
   stop?(): Promise<void>
+}
+
+/** Callback for real-time adapters to push events into the system */
+export interface RealtimeHandler {
+  /** Push one or more messages into the inbox and wake the tick loop */
+  onMessage(items: InboxItem[]): void
+  /** A client connected (for connection-based adapters like WebSocket) */
+  onConnect?(clientId: string, metadata?: Record<string, unknown>): void
+  /** A client disconnected */
+  onDisconnect?(clientId: string): void
+}
+
+/** Simple signal mechanism — real-time adapters signal this to wake the tick loop */
+export interface EventSignal {
+  /** Wait for a signal, or timeout. Returns true if signaled, false if timed out. */
+  wait(timeoutMs: number): Promise<boolean>
+  /** Signal that an event has arrived */
+  signal(): void
 }
 
 // --- Scheduling ---
@@ -186,14 +216,19 @@ export interface AssemblyInput {
   pinnedMemories: MemoryEntry[]
   requestedMemories: MemoryEntry[]
   inbox: InboxItem[]
+  recentlySent: OutboxItem[]       // last N sent messages — prevents duplicate sends
   lastScratchpad: string | null
   lastActionResults: MemoryOpResult[]
   lastShellResults: ShellResult[]
   lastDownloadResults: DownloadResult[]
   lastBrowseResults: BrowseResult[]
+  lastGrepResults: GrepResult[]
+  lastGlobResults: GlobResult[]
+  actionHistory: ActionHistoryEntry[]
   terminals: TerminalInfo[]
   backgroundProcesses: BackgroundProcess[]
   time: TimeContext
+  activeCall?: ActiveCallContext | null
 }
 
 // --- Tick Logging ---

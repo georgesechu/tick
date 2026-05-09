@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "mind": "tsx src/mind.ts",
+    "dashboard": "tsx src/dashboard.ts",
     "build": "tsc",
     "test": "vitest",
     "lint": "tsc --noEmit"
@@ -12,6 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
     "@mozilla/readability": "^0.6.0",
+    "@slack/socket-mode": "^2.0.7",
     "@slack/web-api": "^7.15.2",
     "@whiskeysockets/baileys": "^7.0.0-rc10",
     "better-sqlite3": "^12.9.0",

@@ -93,6 +93,38 @@ export function migrate(db: Database.Database): void {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS calls (
+      call_id            TEXT PRIMARY KEY,
+      started_at         TEXT NOT NULL,
+      ended_at           TEXT,
+      tab_title          TEXT NOT NULL DEFAULT '',
+      tab_url            TEXT NOT NULL DEFAULT '',
+      status             TEXT NOT NULL DEFAULT 'active',
+      total_segments     INTEGER NOT NULL DEFAULT 0,
+      total_duration_sec INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calls_active
+      ON calls(status) WHERE status = 'active';
+
+    CREATE TABLE IF NOT EXISTS call_segments (
+      id             TEXT PRIMARY KEY,
+      call_id        TEXT NOT NULL REFERENCES calls(call_id),
+      segment_index  INTEGER NOT NULL,
+      transcript     TEXT NOT NULL,
+      duration_sec   INTEGER NOT NULL,
+      created_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_call_segments_call
+      ON call_segments(call_id, segment_index);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS call_segments_fts USING fts5(
+      transcript,
+      content='call_segments',
+      content_rowid='rowid'
+    );
   `)
 
   // Migrations for existing databases

@@ -28,11 +28,15 @@ import { DockerComputer } from './providers/computers/docker.js'
 import { DefaultComputerManager } from './providers/computers/manager.js'
 import { SQLiteAgentStateStore } from './providers/state-store.js'
 import { ReadableBrowser } from './providers/browser.js'
+import { OpenAIMediaService } from './providers/utilities/media.js'
 import { DefaultContextAssembler } from './orchestrator/context-assembler.js'
 import { Orchestrator } from './orchestrator/orchestrator.js'
 import { RealClock } from './providers/clock.js'
 import { ConsoleLogger } from './providers/logger.js'
-import type { LLMProvider, Logger, ChannelAdapter, OutboxStore, Computer } from './core/index.js'
+import { DefaultEventSignal } from './providers/event-signal.js'
+import { SQLiteCallStore } from './providers/call/store.js'
+import { CallServer } from './providers/call/server.js'
+import type { LLMProvider, Logger, ChannelAdapter, OutboxStore, Computer, EventSignal } from './core/index.js'
 import type { AgentConfig } from './core/types.js'
 
 async function main() {
@@ -58,6 +62,9 @@ async function main() {
   // Load config
   const daemon = args.includes('--daemon') || !process.stdout.isTTY
   const { config, systemPrompt } = loadConfig(agentDir)
+
+  // Set process title so systemd/journalctl shows the agent name
+  process.title = config.id
   const logger = new ConsoleLogger(config.id, daemon)
 
   logger.info(`loading agent "${config.name}" from ${agentDir}`)
@@ -77,6 +84,9 @@ async function main() {
   const inbox = new SQLiteInboxStore(db)
   const outbox = new SQLiteOutboxStore(db)
   const contextAssembler = new DefaultContextAssembler()
+
+  // Call store (TickCaller)
+  const callStore = new SQLiteCallStore(db)
 
   // Computers
   const computers = createComputers(config, logger)
@@ -98,19 +108,58 @@ async function main() {
     logger,
     stateStore,
     browser: new ReadableBrowser(),
+    media: process.env.OPENAI_API_KEY ? new OpenAIMediaService(process.env.OPENAI_API_KEY) : undefined,
     computers: computerManager,
     inbox,
     outbox,
     channelAdapters: adapters,
+    callStore,
   })
 
   // Seed initial memory
   await orchestrator.seedMemory()
 
+  // Event signal — real-time adapters wake the tick loop via this
+  const eventSignal = new DefaultEventSignal()
+
+  // Start call server (TickCaller) if configured
+  let callServer: CallServer | undefined
+  const callToken = process.env.TICKCALLER_TOKEN
+  const whisperApiKey = process.env.WHISPER_API_KEY
+  const whisperBackend = (process.env.WHISPER_BACKEND ?? 'openai') as 'openai' | 'groq'
+  if (callToken && whisperApiKey) {
+    const callPort = parseInt(process.env.TICKCALLER_PORT ?? '7070', 10)
+    callServer = new CallServer(
+      {
+        port: callPort,
+        token: callToken,
+        whisper: { backend: whisperBackend, apiKey: whisperApiKey },
+      },
+      callStore,
+      logger,
+      eventSignal,
+    )
+    await callServer.start()
+  } else {
+    if (!callToken) logger.debug('TickCaller disabled (set TICKCALLER_TOKEN to enable)')
+    if (!whisperApiKey) logger.debug('TickCaller disabled (set WHISPER_API_KEY to enable)')
+  }
+
   // Start computers and channel adapters
   await computerManager.startAll()
   for (const adapter of adapters) {
     await adapter.start?.()
+    // Wire up real-time listeners
+    if (adapter.listen) {
+      await adapter.listen({
+        onMessage: (items) => {
+          inbox.pushMany(items).then(() => {
+            logger.info(`${adapter.name}: ${items.length} new messages (realtime)`)
+            eventSignal.signal() // wake the tick loop
+          })
+        },
+      })
+    }
   }
 
   if (command === 'run-once') {
@@ -142,7 +191,7 @@ async function main() {
         if (!hasWork) {
           await drainOutbox(outbox, adapters, computerManager, logger)
           logger.debug('sleeping', { nextPoll: `${intervalMs / 1000}s` })
-          if (running) await sleep(intervalMs)
+          if (running) await eventSignal.wait(intervalMs)
           continue
         }
 
@@ -160,13 +209,15 @@ async function main() {
         logger.error('tick error', { error: (err as Error).message })
       }
 
-      // Wait for heartbeat interval
+      // Wait for heartbeat OR real-time event (whichever comes first)
       if (running) {
-        await sleep(intervalMs)
+        const signaled = await eventSignal.wait(intervalMs)
+        if (signaled) logger.debug('woken by realtime event')
       }
     }
 
     // Shutdown
+    await callServer?.stop()
     for (const adapter of adapters) {
       await adapter.stop?.()
     }
@@ -200,8 +251,13 @@ function createComputers(config: AgentConfig, logger: Logger): Computer[] {
           memory: cfg.memory,
           cpus: cfg.cpus,
           network: cfg.network,
+          display: cfg.display,
         }))
         logger.info(`computer: ${name} (docker)`, { image: cfg.image })
+        if (cfg.display) {
+          const port = (typeof cfg.display === 'object' ? cfg.display.port : null) ?? 6080
+          logger.info(`display: http://localhost:${port}`)
+        }
       } else if (type === 'local') {
         computers.push(new LocalComputer(name, cfg.cwd ?? process.cwd()))
         logger.info(`computer: ${name} (local)`)
@@ -230,8 +286,10 @@ async function createChannelAdapters(
     const cfg = channels.slack as Record<string, unknown>
     const botToken = resolveEnvVar(cfg.botToken as string) ?? process.env.SLACK_BOT_TOKEN
     if (botToken) {
+      const appToken = resolveEnvVar(cfg.appToken as string) ?? process.env.SLACK_APP_TOKEN
       adapters.push(new SlackChannelAdapter({
         botToken,
+        appToken: appToken || undefined,
         channels: (cfg.channels ?? []) as string[],
       }, logger))
     } else {

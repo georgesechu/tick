@@ -63,12 +63,33 @@ const browseActionSchema = z.object({
   saveTo: z.string().optional(),
 })
 
+const grepActionSchema = z.object({
+  type: z.literal('grep'),
+  pattern: z.string(),
+  path: z.string().optional(),
+  include: z.string().optional(),
+  context: z.number().optional(),
+  maxResults: z.number().optional(),
+  computer: z.string().optional(),
+})
+
+const globActionSchema = z.object({
+  type: z.literal('glob'),
+  pattern: z.string(),
+  path: z.string().optional(),
+  fileType: z.enum(['file', 'directory', 'any']).optional(),
+  maxResults: z.number().optional(),
+  computer: z.string().optional(),
+})
+
 const actionSchema = z.discriminatedUnion('type', [
   shellActionSchema,
   sendActionSchema,
   downloadActionSchema,
   browseActionSchema,
   waitActionSchema,
+  grepActionSchema,
+  globActionSchema,
 ])
 
 const memoryOpSchema = z.union([
@@ -86,10 +107,23 @@ const memoryOpSchema = z.union([
   z.object({ op: z.literal('history'), key: z.string() }),
 ])
 
+/** Parse each action individually, silently dropping ones with unknown types */
+const lenientActionsSchema = z.array(z.any()).transform((actions) => {
+  const valid: z.infer<typeof actionSchema>[] = []
+  for (const action of actions) {
+    const result = actionSchema.safeParse(action)
+    if (result.success) {
+      valid.push(result.data)
+    }
+    // Unknown action types are silently dropped
+  }
+  return valid
+})
+
 const tickOutputSchema = z.object({
   status: z.enum(['working', 'done', 'blocked', 'idle']),
   thinking: coerceString,
-  actions: z.array(actionSchema).default([]),
+  actions: lenientActionsSchema.default([]),
   memoryOps: z.array(memoryOpSchema).default([]),
   scratchpad: coerceString.default(''),
 })
@@ -130,7 +164,7 @@ export class ZodTickOutputParser implements TickOutputParser {
     // Pre-filter: drop actions with unknown types so one bad action doesn't crash the tick
     const obj = parsed as Record<string, unknown>
     if (Array.isArray(obj.actions)) {
-      const validTypes = new Set(['shell', 'send', 'download', 'browse', 'wait'])
+      const validTypes = new Set(['shell', 'send', 'download', 'browse', 'wait', 'grep', 'glob'])
       obj.actions = obj.actions.filter((a: any) => a && validTypes.has(a.type))
     }
 

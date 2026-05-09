@@ -12,6 +12,10 @@ export interface DockerComputerConfig {
   memory?: string              // e.g. "4g"
   cpus?: string                // e.g. "2"
   network?: string             // e.g. "host" or "bridge"
+  display?: boolean | {        // enable virtual display + noVNC (default: false)
+    port?: number              // noVNC port (default: 6080)
+    resolution?: string        // e.g. "1280x720" (default: "1280x800")
+  }
 }
 
 class DockerTerminal implements Terminal {
@@ -60,12 +64,15 @@ class DockerTerminal implements Terminal {
     const envFlags = Object.entries({ ...this._env, ...options?.env })
       .map(([k, v]) => ['-e', `${k}=${v}`]).flat()
 
+    // Source ssh-agent + display env if available (set up during container boot)
+    const wrappedCommand = `[ -f /etc/ssh-agent.env ] && . /etc/ssh-agent.env 2>/dev/null; [ -f /etc/display.env ] && . /etc/display.env 2>/dev/null; ${command}`
+
     const dockerArgs = [
       'exec', '-i',
       '-w', this._cwd,
       ...envFlags,
       this._containerId,
-      'bash', '-c', command,
+      'bash', '-c', wrappedCommand,
     ]
 
     if (mode === 'background') {
@@ -191,6 +198,7 @@ export class DockerComputer implements Computer {
 
   async start(): Promise<void> {
     // Check if container already exists
+    let isNew = false
     try {
       const existing = execSync(`docker ps -aq -f name=^${this.containerName}$`, { encoding: 'utf-8' }).trim()
       if (existing) {
@@ -199,10 +207,19 @@ export class DockerComputer implements Computer {
         if (!running) {
           execSync(`docker start ${this.containerName}`)
         }
+        // Clear stale terminals if container ID changed (container was recreated)
+        if (this.containerId && this.containerId !== existing) {
+          this.terminals.clear()
+        }
         this.containerId = existing
-        return
       }
     } catch { /* */ }
+
+    // Always clear terminals on fresh start — ensures no stale container refs
+    this.terminals.clear()
+
+    if (!this.containerId) {
+      isNew = true
 
     // Create new container
     const image = this.config.image ?? 'ubuntu:24.04'
@@ -218,6 +235,17 @@ export class DockerComputer implements Computer {
       args.push('-p', p)
     }
 
+    // Display port (noVNC)
+    if (this.config.display) {
+      const displayCfg = typeof this.config.display === 'object' ? this.config.display : {}
+      const noVncPort = displayCfg.port ?? 6080
+      // Only add if not already in ports list
+      const portStr = `${noVncPort}:${noVncPort}`
+      if (!(this.config.ports ?? []).includes(portStr)) {
+        args.push('-p', portStr)
+      }
+    }
+
     // Env
     for (const [k, v] of Object.entries(this.config.env ?? {})) {
       args.push('-e', `${k}=${v}`)
@@ -228,15 +256,93 @@ export class DockerComputer implements Computer {
     if (this.config.cpus) args.push('--cpus', this.config.cpus)
     if (this.config.network) args.push('--network', this.config.network)
 
+    // Chrome needs shared memory
+    if (this.config.display) {
+      args.push('--shm-size', '2g')
+    }
+
     // Keep alive
     args.push(image, 'sleep', 'infinity')
 
     this.containerId = execSync(args.join(' '), { encoding: 'utf-8' }).trim()
 
-    // Install basics
+      // Install basics (only on new container)
+      try {
+        execSync(`docker exec ${this.containerId} bash -c "apt-get update -qq && apt-get install -y -qq curl git python3 jq ripgrep fd-find openssh-client > /dev/null 2>&1 && (command -v fd || ln -sf \$(which fdfind) /usr/local/bin/fd) 2>/dev/null"`, { timeout: 120000 })
+      } catch { /* best effort */ }
+    }
+
+    // --- Below runs on EVERY start (new or existing container) ---
+
+    // Start ssh-agent and load any keys — write env to /etc/ssh-agent.env
+    // Must run every start because ssh-agent dies when container stops
     try {
-      execSync(`docker exec ${this.containerId} bash -c "apt-get update -qq && apt-get install -y -qq curl git python3 jq > /dev/null 2>&1"`, { timeout: 120000 })
+      execSync([
+        `docker exec ${this.containerId} bash -c "`,
+        `eval \\$(ssh-agent -s) > /dev/null 2>&1;`,
+        `for key in /root/.ssh/id_*; do [ -f \\$key ] && [[ \\$key != *.pub ]] && ssh-add \\$key 2>/dev/null; done;`,
+        `echo export SSH_AUTH_SOCK=\\$SSH_AUTH_SOCK > /etc/ssh-agent.env;`,
+        `echo export SSH_AGENT_PID=\\$SSH_AGENT_PID >> /etc/ssh-agent.env`,
+        `"`,
+      ].join(' '), { timeout: 10000 })
     } catch { /* best effort */ }
+
+    // Display stack: Xvfb + fluxbox + x11vnc + noVNC + Chrome
+    if (this.config.display) {
+      await this.setupDisplay()
+    }
+  }
+
+  /**
+   * Set up a virtual display with noVNC for browser-based access.
+   * Installs Xvfb, fluxbox, x11vnc, noVNC, and Chrome.
+   * George can connect via http://localhost:<port> to see/control the desktop.
+   */
+  private async setupDisplay(): Promise<void> {
+    const displayCfg = typeof this.config.display === 'object' ? this.config.display : {}
+    const resolution = displayCfg.resolution ?? '1280x800'
+    const vncPort = 5900
+    const noVncPort = displayCfg.port ?? 6080
+    const id = this.containerId!
+
+    // Check if display is already running
+    try {
+      const check = execSync(`docker exec ${id} bash -c "pgrep -x Xvfb > /dev/null 2>&1 && echo running || echo stopped"`, { encoding: 'utf-8' }).trim()
+      if (check === 'running') return
+    } catch { /* continue with setup */ }
+
+    // Install display packages (this takes a while the first time, cached after)
+    try {
+      execSync(`docker exec ${id} bash -c "export DEBIAN_FRONTEND=noninteractive && apt-get update -qq && apt-get install -y -qq xvfb fluxbox x11vnc novnc websockify chromium-browser fonts-liberation fonts-noto-color-emoji dbus-x11 pulseaudio > /dev/null 2>&1"`, { timeout: 300000 })
+    } catch {
+      // Try chromium instead of chromium-browser (package name varies)
+      try {
+        execSync(`docker exec ${id} bash -c "export DEBIAN_FRONTEND=noninteractive && apt-get install -y -qq chromium > /dev/null 2>&1"`, { timeout: 120000 })
+      } catch { /* chromium might already be installed */ }
+    }
+
+    // Start display services — write a script file to avoid shell escaping nightmares
+    const script = `#!/bin/bash
+export DISPLAY=:99
+Xvfb :99 -screen 0 ${resolution}x24 -ac &
+sleep 1
+fluxbox -display :99 &
+sleep 0.5
+x11vnc -display :99 -forever -shared -nopw -rfbport ${vncPort} -bg -o /tmp/x11vnc.log 2>/dev/null
+websockify --web /usr/share/novnc ${noVncPort} localhost:${vncPort} > /tmp/novnc.log 2>&1 &
+sleep 0.5
+pulseaudio --start --exit-idle-time=-1 2>/dev/null || true
+echo 'export DISPLAY=:99' > /etc/display.env
+echo 'export PULSE_SERVER=unix:/tmp/pulseaudio.sock' >> /etc/display.env
+echo 'display ready'
+`
+
+    try {
+      // Write the script, then execute it
+      execSync(`docker exec ${id} bash -c 'cat > /tmp/start-display.sh << "XEOF"\n${script}\nXEOF\nchmod +x /tmp/start-display.sh && bash /tmp/start-display.sh'`, { timeout: 30000 })
+    } catch (err) {
+      console.error('[docker] display setup failed:', (err as Error).message?.slice(0, 200))
+    }
   }
 
   async stop(): Promise<void> {

@@ -24,6 +24,8 @@ const ICONS: Record<string, string> = {
   // Channels
   'slack connected':    '💬',
   'slack:':             '💬',
+  'slack event':        '💬',
+  'slack raw event':    '💬',
   'whatsapp connected': '💬',
   'whatsapp:':          '💬',
   'gmail imap':         '📧',
@@ -49,11 +51,28 @@ const ICONS: Record<string, string> = {
   'download failed':    '📥',
   'timer set':          '⏰',
   'copied from':        '📋',
+  'memory set':         '💾',
+  'memory get':         '💾',
+  'memory delete':      '💾',
+  'memory search':      '💾',
+  'memory pin':         '💾',
+  'memory unpin':       '💾',
+  'shell output':       '   ',
+  'shell stderr':       '   ',
+  'grep':               '🔍',
+  'glob':               '📂',
+  'display':            '🖥️ ',
 
   // Status
   'sleeping':           '😴',
   'shutting down':      '🛑',
   'stopped':            '🏁',
+  'call server':        '📞',
+  'call started':       '📞',
+  'call ended':         '📞',
+  'chunk received':     '📞',
+  'segment transcribed':'📞',
+  'call transcript':    '📞',
 }
 
 // Messages to suppress entirely in daemon mode (noise)
@@ -147,7 +166,7 @@ export class ConsoleLogger implements Logger {
       this.flushStartupBanner()
     }
 
-    this.writeln(this.formatDaemonLine(level, msg, data))
+    this.writeln(stripAnsi(this.formatDaemonLine(level, msg, data)))
   }
 
   private flushStartupBanner(): void {
@@ -159,7 +178,8 @@ export class ConsoleLogger implements Logger {
     let model = ''
     let seedCount = 0
 
-    for (const line of this.startupBuffer) {
+    for (const raw of this.startupBuffer) {
+      const line = stripAnsi(raw)
       if (line.includes('slack')) channels.push('slack')
       if (line.includes('whatsapp')) channels.push('whatsapp')
       if (line.includes('gmail') && line.includes('IMAP')) channels.push('gmail')
@@ -172,13 +192,13 @@ export class ConsoleLogger implements Logger {
     }
 
     const bar = '═'.repeat(50)
-    this.writeln(`${bar}`)
-    this.writeln(`  🤖 ${BOLD}${this.agentName}${RESET} is online`)
-    if (model) this.writeln(`  🧠 ${DIM}${model}${RESET}`)
+    this.writeln(bar)
+    this.writeln(`  🤖 ${this.agentName} is online`)
+    if (model) this.writeln(`  🧠 ${model}`)
     if (channels.length) this.writeln(`  💬 ${channels.join(' · ')}`)
     if (computers.length) this.writeln(`  🖥️  ${computers.join(' · ')}`)
     if (seedCount) this.writeln(`  🌱 ${seedCount} memories seeded`)
-    this.writeln(`${bar}`)
+    this.writeln(bar)
   }
 
   private formatDaemonLine(level: string, msg: string, data?: Record<string, unknown>): string {
@@ -238,6 +258,15 @@ export class ConsoleLogger implements Logger {
       const exit = msg.match(/exit:(\d+)/)?.[1] ?? '?'
       const ok = exit === '0' ? `${GREEN}✓${RESET}` : `${RED}✗${exit}${RESET}`
       return `${ok} ${DIM}${cmd}${cmd.length > 50 ? '…' : ''}${RESET}`
+    }
+
+    if (lower === 'shell output') {
+      const out = data?.stdout as string ?? ''
+      return out
+    }
+
+    if (lower === 'shell stderr') {
+      return `${RED}${data?.stderr ?? ''}${RESET}`
     }
 
     if (lower === 'send enqueued') {
@@ -314,6 +343,11 @@ export class ConsoleLogger implements Logger {
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+/** Strip ANSI escape sequences for daemon/journald output */
+function stripAnsi(s: string): string {
+  return s.replace(/\x1b\[[0-9;]*m/g, '')
 }
 
 function formatData(data: Record<string, unknown>): string {
