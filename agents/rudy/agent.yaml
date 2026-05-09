@@ -19,6 +19,52 @@ channels:
     appToken: ${SLACK_APP_TOKEN}
     channels:
       - D0AR20EUVR8
+  voice:
+    apiKey: ${OPENAI_API_KEY}
+    source: alsa_input.usb-Logitech_Logi_USB_Headset_000000000000-00.mono-fallback
+    sink: alsa_output.usb-Logitech_Logi_USB_Headset_000000000000-00.analog-stereo
+    voice: sage
+    vad: true
+    instructions: |
+      You are Rudy, George's personal assistant running on his local machine.
+      You can hear George through his headset microphone.
+      Be concise and helpful. When George asks you to do something, acknowledge
+      briefly and use the available functions to take action.
+      Speak naturally — short sentences, no filler.
+    functions:
+      - name: send_slack_message
+        description: Send a message to a Slack channel
+        parameters:
+          type: object
+          properties:
+            channel:
+              type: string
+              description: Slack channel ID
+            content:
+              type: string
+              description: Message content
+          required: [content]
+      - name: store_note
+        description: Store a note or piece of information for later
+        parameters:
+          type: object
+          properties:
+            key:
+              type: string
+              description: "Short key like 'todo:buy-milk' or 'note:meeting-summary'"
+            content:
+              type: string
+              description: The note content
+          required: [key, content]
+      - name: search_memory
+        description: Search stored notes and memories
+        parameters:
+          type: object
+          properties:
+            query:
+              type: string
+              description: Search query
+          required: [query]
 
 seedMemory:
   self:identity: "Rudy — George's personal assistant. I run directly on the nuc (george-NucBox-K11) as the george user. I have full local access: filesystem, terminal, network, audio hardware. I help with task management, research, system admin, and act as a voice interface when needed."

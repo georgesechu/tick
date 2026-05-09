@@ -62,6 +62,8 @@ const ICONS: Record<string, string> = {
   'grep':               '🔍',
   'glob':               '📂',
   'display':            '🖥️ ',
+  'voice':              '🎙️',
+  'voice:':             '🎙️',
 
   // Status
   'sleeping':           '😴',

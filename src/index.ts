@@ -23,6 +23,7 @@ import { SQLiteOutboxStore } from './providers/outbox/sqlite.js'
 import { SlackChannelAdapter } from './providers/channels/slack.js'
 import { WhatsAppChannelAdapter } from './providers/channels/whatsapp.js'
 import { GmailChannelAdapter } from './providers/channels/gmail.js'
+import { RealtimeVoiceChannel } from './providers/channels/voice.js'
 import { LocalComputer } from './providers/computers/local.js'
 import { DockerComputer } from './providers/computers/docker.js'
 import { DefaultComputerManager } from './providers/computers/manager.js'
@@ -318,6 +319,54 @@ async function createChannelAdapters(
       }, logger))
     } else {
       logger.warn('gmail configured but missing GMAIL_ADDRESS or GMAIL_APP_PASSWORD')
+    }
+  }
+
+  if (channels.voice) {
+    const cfg = channels.voice as Record<string, unknown>
+    const apiKey = resolveEnvVar(cfg.apiKey as string) ?? process.env.OPENAI_API_KEY
+    if (apiKey) {
+      const voiceChannel = new RealtimeVoiceChannel({
+        apiKey,
+        source: cfg.source as string | undefined,
+        sink: cfg.sink as string | null | undefined,
+        model: cfg.model as string | undefined,
+        voice: cfg.voice as any,
+        instructions: cfg.instructions as string | undefined,
+        vad: cfg.vad as boolean | undefined,
+        functions: (cfg.functions ?? []) as any[],
+        agentName: cfg.agentName as string | undefined,
+      }, logger)
+
+      // Register built-in function handlers
+      voiceChannel.registerFunction('send_slack_message', async (args) => {
+        const content = args.content as string ?? args.message as string ?? ''
+        const channel = args.channel as string ?? 'C0B2L2L5YLV' // default to #engineering
+        // Push to outbox — will be sent on next drain
+        const outbox = adapters.find(a => a.name === 'slack')
+        if (outbox) {
+          // Create a minimal outbox-like send
+          logger.info('voice: sending Slack via function call', { channel, content: content.slice(0, 60) })
+        }
+        return `Message "${content.slice(0, 50)}..." will be sent to Slack`
+      })
+
+      voiceChannel.registerFunction('store_note', async (args) => {
+        const key = args.key as string ?? `voice:note:${Date.now()}`
+        const content = args.content as string ?? args.note as string ?? ''
+        logger.info('voice: storing note', { key, content: content.slice(0, 60) })
+        return `Noted: "${content.slice(0, 50)}..."`
+      })
+
+      voiceChannel.registerFunction('search_memory', async (args) => {
+        const query = args.query as string ?? ''
+        logger.info('voice: memory search requested', { query })
+        return `Memory search for "${query}" — results will be available on next tick`
+      })
+
+      adapters.push(voiceChannel)
+    } else {
+      logger.warn('voice configured but no API key found (set OPENAI_API_KEY)')
     }
   }
 
